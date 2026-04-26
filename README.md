@@ -32,17 +32,18 @@ npm run dev            # sobe a API em :3000 com hot reload
 | `npm run db:migrate` | Aplica migrations Prisma em DB local. |
 | `npm run db:seed` | Cria trilha oficial ENEM de exemplo. |
 | `npm run db:reset` | Drop + migrate + seed (uso local). |
+| `npm audit` | Inventario de vulnerabilidades de dependencias. |
 
 ## Endpoints HTTP
 
-`GET /health` — health check.
+`GET /health` - health check.
 
 ```http
 GET /health
 200 { "status": "ok" }
 ```
 
-`GET /roadmaps/official` — lista trilhas oficiais publicadas.
+`GET /roadmaps/official` - lista trilhas oficiais publicadas.
 
 ```http
 GET /roadmaps/official
@@ -54,7 +55,7 @@ GET /roadmaps/official
 }
 ```
 
-`GET /roadmaps/:id` — detalhe da trilha. Aceita header opcional `x-user-id` para anexar progresso.
+`GET /roadmaps/:id` - detalhe da trilha. Aceita header opcional `x-user-id` para anexar progresso.
 
 ```http
 GET /roadmaps/<id>
@@ -69,6 +70,30 @@ x-user-id: <userId>
 
 # Inexistente:
 404 { "error": { "code": "ROADMAP_NOT_FOUND", "message": "Roadmap <id> not found" } }
+```
+
+`POST /roadmaps/:roadmapId/items/:itemId/complete` - marca video como concluido. Requer `x-user-id`. Idempotente.
+
+```http
+POST /roadmaps/<roadmapId>/items/<itemId>/complete
+x-user-id: <userId>
+
+# Primeira conclusao -> 201
+{ "data": { "videoProgress": { "completedAt": "...", "activityDate": "..." },
+            "firstCompletion": true,
+            "roadmapProgress": { "totalItems": 2, "completedItems": 1, "percentComplete": 50, ... } } }
+
+# Repeticao idempotente -> 200, completedAt inalterado
+{ "data": { ..., "firstCompletion": false } }
+
+# Sem header:
+401 { "error": { "code": "UNAUTHORIZED", ... } }
+
+# Item inexistente:
+404 { "error": { "code": "ROADMAP_ITEM_NOT_FOUND", ... } }
+
+# Item nao pertence ao roadmap:
+400 { "error": { "code": "ROADMAP_ITEM_MISMATCH", ... } }
 ```
 
 > `x-user-id` e contrato **temporario**. Auth real (sessao/JWT) sera plugada em card seguinte; `request.userId` e o ponto de extensao.
@@ -88,6 +113,7 @@ prisma/
 docs/
   DEV-001-NOTES.md
   DEV-002-NOTES.md
+  DEV-003-NOTES.md
 ```
 
 ## Seguranca
@@ -98,4 +124,4 @@ docs/
 
 ## Status
 
-DEV-001 e DEV-002 entregues. Proximos: DEV-002A (OAuth 1.0), DEV-003 (POST complete + agregacao), DEV-004 (UI).
+DEV-001, DEV-002 e DEV-003 entregues. Proximos: DEV-002A (OAuth 1.0), DEV-004 (UI Mobile/Web).

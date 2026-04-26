@@ -8,6 +8,7 @@ import {
   RoadmapItemMismatchError,
   RoadmapItemNotFoundError,
   RoadmapNotFoundError,
+  UnauthorizedError,
 } from "../domain/errors.js";
 
 interface HttpErrorBody {
@@ -22,6 +23,10 @@ export function domainErrorHandler(
   request: FastifyRequest,
   reply: FastifyReply,
 ): void {
+  if (error instanceof UnauthorizedError) {
+    reply.status(401).send(buildBody(error));
+    return;
+  }
   if (error instanceof RoadmapNotFoundError) {
     reply.status(404).send(buildBody(error));
     return;

@@ -30,3 +30,12 @@ export class RoadmapItemMismatchError extends DomainError {
     );
   }
 }
+
+// Erro transversal usado pela camada HTTP. Mantemos no dominio para que
+// o mapeador centralize a traducao em status code, mesmo que a validacao
+// real venha do plugin/middleware de auth.
+export class UnauthorizedError extends DomainError {
+  constructor(message = "Authentication required") {
+    super("UNAUTHORIZED", message);
+  }
+}

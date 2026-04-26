@@ -144,3 +144,109 @@ describe("GET /health", () => {
     expect(res.json()).toEqual({ status: "ok" });
   });
 });
+
+describe("POST /roadmaps/:roadmapId/items/:itemId/complete", () => {
+  async function arrange() {
+    const ctx = await setup();
+    const roadmap = await ctx.world.repos.roadmaps.findBySlug("enem-test");
+    const items = await ctx.world.repos.items.findByRoadmap(roadmap!.id);
+    const student = ctx.world.store.addUser({
+      email: "ana@test.local",
+      name: "Ana",
+    });
+    return { ...ctx, roadmap: roadmap!, items, student };
+  }
+
+  it("primeira conclusao retorna 201, firstCompletion=true e progresso atualizado", async () => {
+    const { app, roadmap, items, student } = await arrange();
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/roadmaps/${roadmap.id}/items/${items[0]!.id}/complete`,
+      headers: { "x-user-id": student.id },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as {
+      data: {
+        videoProgress: { completedAt: string | null; activityDate: string | null };
+        firstCompletion: boolean;
+        roadmapProgress: {
+          totalItems: number;
+          completedItems: number;
+          percentComplete: number;
+        };
+      };
+    };
+    expect(body.data.firstCompletion).toBe(true);
+    expect(body.data.videoProgress.completedAt).not.toBeNull();
+    expect(body.data.roadmapProgress).toMatchObject({
+      totalItems: 2,
+      completedItems: 1,
+      percentComplete: 50,
+    });
+  });
+
+  it("e idempotente: segunda chamada retorna 200, firstCompletion=false e mesmo completedAt", async () => {
+    const { app, roadmap, items, student } = await arrange();
+    const url = `/roadmaps/${roadmap.id}/items/${items[0]!.id}/complete`;
+    const headers = { "x-user-id": student.id };
+
+    const first = await app.inject({ method: "POST", url, headers });
+    const second = await app.inject({ method: "POST", url, headers });
+
+    expect(first.statusCode).toBe(201);
+    expect(second.statusCode).toBe(200);
+    const firstBody = first.json() as {
+      data: { videoProgress: { completedAt: string }; firstCompletion: boolean };
+    };
+    const secondBody = second.json() as {
+      data: { videoProgress: { completedAt: string }; firstCompletion: boolean };
+    };
+    expect(secondBody.data.firstCompletion).toBe(false);
+    expect(secondBody.data.videoProgress.completedAt).toBe(
+      firstBody.data.videoProgress.completedAt,
+    );
+  });
+
+  it("retorna 401 quando x-user-id ausente", async () => {
+    const { app, roadmap, items } = await arrange();
+    const res = await app.inject({
+      method: "POST",
+      url: `/roadmaps/${roadmap.id}/items/${items[0]!.id}/complete`,
+    });
+    expect(res.statusCode).toBe(401);
+    const body = res.json() as { error: { code: string } };
+    expect(body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("retorna 404 quando item nao existe", async () => {
+    const { app, roadmap, student } = await arrange();
+    const res = await app.inject({
+      method: "POST",
+      url: `/roadmaps/${roadmap.id}/items/missing/complete`,
+      headers: { "x-user-id": student.id },
+    });
+    expect(res.statusCode).toBe(404);
+    const body = res.json() as { error: { code: string } };
+    expect(body.error.code).toBe("ROADMAP_ITEM_NOT_FOUND");
+  });
+
+  it("retorna 400 quando item nao pertence ao roadmap informado", async () => {
+    const { app, world, items, student } = await arrange();
+    const otherRoadmap = world.store.addRoadmap({
+      slug: "other-roadmap",
+      title: "Outra trilha",
+      source: "OFFICIAL",
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/roadmaps/${otherRoadmap.id}/items/${items[0]!.id}/complete`,
+      headers: { "x-user-id": student.id },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = res.json() as { error: { code: string } };
+    expect(body.error.code).toBe("ROADMAP_ITEM_MISMATCH");
+  });
+});

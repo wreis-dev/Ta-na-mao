@@ -30,7 +30,12 @@ export async function buildApp(
 
   app.get("/health", async () => ({ status: "ok" }));
 
-  await app.register(roadmapRoutes({ roadmapService: deps.roadmapService }));
+  await app.register(
+    roadmapRoutes({
+      roadmapService: deps.roadmapService,
+      progressService: deps.progressService,
+    }),
+  );
 
   return app;
 }

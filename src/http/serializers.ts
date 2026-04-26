@@ -68,6 +68,12 @@ export interface RoadmapDetailDto {
   progress: RoadmapProgressDto | null;
 }
 
+export interface VideoCompleteResponseDto {
+  videoProgress: VideoProgressDto;
+  firstCompletion: boolean;
+  roadmapProgress: RoadmapProgressDto;
+}
+
 export function serializeRoadmapSummary(r: Roadmap): RoadmapSummaryDto {
   return {
     id: r.id,
@@ -134,5 +140,17 @@ function serializeProgressSummary(
     startedAt: p.startedAt ? p.startedAt.toISOString() : null,
     lastActivityAt: p.lastActivityAt ? p.lastActivityAt.toISOString() : null,
     completedAt: p.completedAt ? p.completedAt.toISOString() : null,
+  };
+}
+
+export function serializeVideoCompleteResult(input: {
+  progress: UserVideoProgress;
+  firstCompletion: boolean;
+  roadmapProgress: RoadmapProgressSummary;
+}): VideoCompleteResponseDto {
+  return {
+    videoProgress: serializeVideoProgress(input.progress),
+    firstCompletion: input.firstCompletion,
+    roadmapProgress: serializeProgressSummary(input.roadmapProgress),
   };
 }
