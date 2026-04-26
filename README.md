@@ -8,6 +8,7 @@ Plataforma de educacao com trilhas de YouTube, focada em ENEM. Backend Node + Ty
 - Prisma ORM com PostgreSQL
 - Fastify v5
 - Vitest
+- OAuth 1.0 HMAC-SHA1 sobre `node:crypto` (integracoes externas como Trello)
 
 ## Setup
 
@@ -24,7 +25,7 @@ npm run dev            # sobe a API em :3000 com hot reload
 
 | Script | O que faz |
 |---|---|
-| `npm test` | Roda Vitest (services em memoria + contrato Fastify, sem banco). |
+| `npm test` | Roda Vitest (services em memoria + contrato Fastify + OAuth 1.0). |
 | `npm run typecheck` | TypeScript strict, sem emitir. |
 | `npm run build` | Compila para `dist/`. |
 | `npm run dev` | Sobe API em watch mode (tsx). |
@@ -98,6 +99,26 @@ x-user-id: <userId>
 
 > `x-user-id` e contrato **temporario**. Auth real (sessao/JWT) sera plugada em card seguinte; `request.userId` e o ponto de extensao.
 
+## Integracoes externas (OAuth 1.0)
+
+DEV-002A entrega um modulo isolado para assinar requisicoes OAuth 1.0 HMAC-SHA1 (RFC 5849). Foco inicial: Trello.
+
+```ts
+import { loadTrelloConfigOrThrow } from "./integrations/trello/config.js";
+import { buildTrelloRequest } from "./integrations/trello/client.js";
+
+const creds = loadTrelloConfigOrThrow();              // valida envs
+const req = buildTrelloRequest(creds, {
+  method: "GET",
+  path: "/members/me/boards",
+});
+// req = { method, url, headers: { Authorization: "OAuth ..." }, signed }
+const res = await fetch(req.url, { method: req.method, headers: req.headers });
+```
+
+> **Nao usar OAuth 1.0 com YouTube.** YouTube Data API usa API key (publico) ou OAuth 2.0 (privado).
+> Detalhes em `docs/DEV-002A-NOTES.md`.
+
 ## Estrutura
 
 ```
@@ -105,6 +126,9 @@ src/
   domain/                 # tipos, services e contratos de repositorio
   infra/prisma/           # client e adapters Prisma
   http/                   # app, rotas, serializers, error handler, auth stub
+  integrations/
+    oauth1/               # algoritmo OAuth 1.0 HMAC-SHA1 puro
+    trello/               # adapter + config validator (sem rede)
   server.ts               # entrypoint do listen
 prisma/
   schema.prisma           # entidades base
@@ -113,6 +137,7 @@ prisma/
 docs/
   DEV-001-NOTES.md
   DEV-002-NOTES.md
+  DEV-002A-NOTES.md
   DEV-003-NOTES.md
 ```
 
@@ -120,8 +145,9 @@ docs/
 
 - Sem secrets/tokens/keys no repositorio.
 - `.env` no `.gitignore`. Use `.env.example` como referencia.
-- YouTube Data API e OAuth 1.0 (Trello) sao tratados em outros cards (DEV-002A).
+- Credenciais Trello validadas em runtime sem nunca aparecerem em logs ou respostas de erro.
+- YouTube fica fora do OAuth 1.0 propositalmente.
 
 ## Status
 
-DEV-001, DEV-002 e DEV-003 entregues. Proximos: DEV-002A (OAuth 1.0), DEV-004 (UI Mobile/Web).
+DEV-001, DEV-002, DEV-002A e DEV-003 entregues. Proximo: DEV-004 (UI Mobile/Web).
