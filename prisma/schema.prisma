@@ -1,0 +1,176 @@
+// Ta na mao - schema base para DEV-001
+// Cobre: trilhas oficiais ENEM (P1), videos do YouTube e progresso do usuario (P2).
+// XP/streak (P4) ficam para cards futuros, mas o campo activityDate em UserVideoProgress
+// ja prepara o terreno para o ledger de XP.
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Usuarios ----------
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  // Curador interno pode publicar/alterar trilhas oficiais (regra de negocio P1).
+  role      UserRole @default(STUDENT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ownedRoadmaps   Roadmap[]            @relation("RoadmapOwner")
+  videoProgress   UserVideoProgress[]
+  roadmapProgress UserRoadmapProgress[]
+
+  @@map("users")
+}
+
+enum UserRole {
+  STUDENT
+  CURATOR
+  ADMIN
+}
+
+// ---------- Trilhas ----------
+
+// Origem da trilha. Trilhas oficiais sao curadas por equipe interna;
+// user-generated sao montadas pelo proprio usuario.
+enum RoadmapSource {
+  OFFICIAL
+  USER
+}
+
+enum RoadmapVisibility {
+  PUBLIC
+  UNLISTED
+  PRIVATE
+}
+
+model Roadmap {
+  id          String            @id @default(cuid())
+  slug        String            @unique
+  title       String
+  description String?
+  source      RoadmapSource
+  visibility  RoadmapVisibility @default(PUBLIC)
+  // ownerId so e exigido para trilhas user-generated. Trilhas oficiais
+  // ficam com ownerId nulo e source = OFFICIAL (validado em service).
+  ownerId     String?
+  owner       User?             @relation("RoadmapOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  publishedAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  topics    RoadmapTopic[]
+  items     RoadmapItem[]
+  progress  UserRoadmapProgress[]
+
+  @@index([source, visibility])
+  @@index([ownerId])
+  @@map("roadmaps")
+}
+
+model RoadmapTopic {
+  id        String   @id @default(cuid())
+  roadmapId String
+  roadmap   Roadmap  @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  title     String
+  // Disciplina opcional para trilhas multidisciplinares (ex.: ENEM tem varias materias).
+  subject   String?
+  // Ordem estavel dentro da trilha. Garantida via unique composto.
+  order     Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items RoadmapItem[]
+
+  @@unique([roadmapId, order])
+  @@index([roadmapId])
+  @@map("roadmap_topics")
+}
+
+enum RoadmapItemStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// Item da trilha = video do YouTube. Outras fontes ficam para depois.
+model RoadmapItem {
+  id              String            @id @default(cuid())
+  roadmapId       String
+  roadmap         Roadmap           @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  topicId         String?
+  topic           RoadmapTopic?     @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  // Metadados do YouTube. youtubeVideoId e a unica chave externa estavel.
+  youtubeVideoId  String
+  title           String
+  channel         String?
+  thumbnailUrl    String?
+  durationSeconds Int?
+  // Ordem dentro da trilha. Unique composto garante sequencia estavel.
+  order           Int
+  status          RoadmapItemStatus @default(PUBLISHED)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  progress UserVideoProgress[]
+
+  @@unique([roadmapId, order])
+  @@index([roadmapId])
+  @@index([topicId])
+  @@index([youtubeVideoId])
+  @@map("roadmap_items")
+}
+
+// ---------- Progresso ----------
+
+// Progresso por video, unico por (userId, roadmapItemId).
+// completedAt nullable permite registrar "iniciado" sem conclusao no futuro.
+// activityDate (DATE) acelera calculos de streak/XP em cards seguintes.
+model UserVideoProgress {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roadmapItemId String
+  roadmapItem   RoadmapItem  @relation(fields: [roadmapItemId], references: [id], onDelete: Cascade)
+  completedAt   DateTime?
+  activityDate  DateTime?    @db.Date
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@unique([userId, roadmapItemId])
+  @@index([userId])
+  @@index([roadmapItemId])
+  @@index([activityDate])
+  @@map("user_video_progress")
+}
+
+// Snapshot agregado do progresso por trilha. Opcional - pode ser
+// recalculado por query, mas armazenar acelera home/dashboard (P5).
+// Atualizado pelo service em transacao com UserVideoProgress.
+model UserRoadmapProgress {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roadmapId       String
+  roadmap         Roadmap  @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  totalItems      Int      @default(0)
+  completedItems  Int      @default(0)
+  // Percentual entre 0 e 100, derivado mas materializado para leitura barata.
+  percentComplete Int      @default(0)
+  startedAt       DateTime @default(now())
+  lastActivityAt  DateTime?
+  completedAt     DateTime?
+
+  @@unique([userId, roadmapId])
+  @@index([userId])
+  @@index([roadmapId])
+  @@map("user_roadmap_progress")
+}
